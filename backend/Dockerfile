@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     espeak-ng \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
