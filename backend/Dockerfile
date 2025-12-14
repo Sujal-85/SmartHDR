@@ -4,17 +4,25 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Set environment variables to prevent Python from writing pyc files and buffering stdout
+# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies required for OpenCV, Audio, etc.
+# Create a virtual environment to avoid running pip as root warning
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgl1 \
     libglib2.0-0 \
     espeak-ng \
     && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN pip install --upgrade pip
 
 # Copy requirements file
 COPY requirements.txt .
