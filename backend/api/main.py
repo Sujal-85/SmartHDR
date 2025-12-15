@@ -48,23 +48,23 @@ app.include_router(math_solver.router, prefix="/api/math", tags=["Math"])
 app.include_router(sketch.router, prefix="/api/sketch", tags=["Sketch"])
 app.include_router(pdf_tools.router, prefix="/api/pdf", tags=["PDF"])
 
-@app.on_event("startup")
-async def startup_event():
-    print("Starting up... Preloading AI Models (This may take a moment)")
-    
-    # 1. Preload Speech Models
-    try:
-        print("  - Preloading Speech Toolkit...")
-        speech.toolkit.preload_models()
-    except Exception as e:
-        print(f"  ! Error loading Speech models: {e}")
-
-    # 2. Preload OCR Models
-    try:
-        print("  - Preloading OCR Engine...")
-        from modules.ocr import preload_models as preload_ocr
-        preload_ocr()
-    except Exception as e:
-        print(f"  ! Error loading OCR models: {e}")
-
-    print("AI Models Ready.")
+# @app.on_event("startup")
+# async def startup_event():
+#     print("Starting up... Preloading AI Models (This may take a moment)")
+#     
+#     # 1. Preload Speech Models
+#     try:
+#         print("  - Preloading Speech Toolkit...")
+#         speech.toolkit.preload_models()
+#     except Exception as e:
+#         print(f"  ! Error loading Speech models: {e}")
+# 
+#     # 2. Preload OCR Models
+#     try:
+#         print("  - Preloading OCR Engine...")
+#         from modules.ocr import preload_models as preload_ocr
+#         preload_ocr()
+#     except Exception as e:
+#         print(f"  ! Error loading OCR models: {e}")
+# 
+#     print("AI Models Ready.")
