@@ -21,7 +21,10 @@ app = FastAPI(
 )
 
 # CORS Configuration
+# In production, we should set FRONTEND_URL environment variable
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 origins = [
+    frontend_url,
     "http://localhost:5173",
     "http://localhost:8080",
     "http://localhost:3000",
@@ -29,6 +32,12 @@ origins = [
     "http://127.0.0.1:8080",
     "http://127.0.0.1:3000",
 ]
+
+# Add Render default subdomains if applicable
+render_url = os.getenv("RENDER_EXTERNAL_URL")
+if render_url:
+    origins.append(render_url)
+
 
 app.add_middleware(
     CORSMiddleware,
