@@ -60,7 +60,7 @@ export function Sidebar() {
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="font-semibold text-sidebar-foreground truncate">SmartHDR</h1>
+            <h1 className="font-semibold text-sidebar-foreground truncate">IntelliScan</h1>
             <p className="text-xs text-muted-foreground truncate">Recognition Platform</p>
           </div>
         )}
