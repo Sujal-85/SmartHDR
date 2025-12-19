@@ -10,8 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Lock, EyeOff, Download, FileText, AlertTriangle } from "lucide-react";
-import { API_BASE_URL } from "@/lib/config";
+import {
+  Shield, Lock, EyeOff, Download, FileText,
+  AlertTriangle, Unlock, Key, Settings
+} from "lucide-react";
+import { pdfAPI } from "@/services/api";
 
 const SecurityPage = () => {
   const [activeTab, setActiveTab] = useState("protect");
@@ -19,53 +22,37 @@ const SecurityPage = () => {
   const [status, setStatus] = useState<StatusType>("idle");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [useAPI, setUseAPI] = useState(false);
 
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [redactionCount, setRedactionCount] = useState(0);
 
   const handleProcess = async () => {
     if (files.length === 0) return;
-    if (activeTab === "protect" && password !== confirmPassword) return;
+    if (activeTab === "protect" && !password) return;
 
-    setStatus("uploading");
-    setDownloadUrl(null); // Reset previous
+    setStatus("processing");
+    setDownloadUrl(null);
 
     try {
-      const formData = new FormData();
-      // Only take the first file for now as backend expects "file" not "files" for single operations usually, 
-      // but router defines `file: UploadFile`. 
-      // Iterate if multiple supported, but UI UploadCard implies potentially multiple? 
-      // Router: `file: UploadFile` (Singular). 
-      // Let's just send the first one.
-      formData.append("file", files[0]);
+      let resultBlob: Blob;
 
-      let url = "";
       if (activeTab === "protect") {
-        url = `${API_BASE_URL}/api/pdf/protect`;
-        formData.append("password", password);
+        resultBlob = await pdfAPI.protect(files[0], password);
+      } else if (activeTab === "unlock") {
+        resultBlob = await pdfAPI.unlock(files[0], password);
       } else {
-        url = `${API_BASE_URL}/api/pdf/redact`;
+        // Redaction
+        resultBlob = await pdfAPI.redact(files[0]);
+        // Note: We might want to get X-Redaction-Count from response if needed
       }
 
-      setStatus("processing");
-
-      const response = await fetch(url, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
-      const newUrl = window.URL.createObjectURL(blob);
+      const newUrl = window.URL.createObjectURL(resultBlob);
       setDownloadUrl(newUrl);
       setStatus("success");
-
     } catch (error) {
       console.error("Processing failed:", error);
-      setStatus("idle");
-      alert("Processing failed. Make sure backend is running.");
+      setStatus("error");
     }
   };
 
@@ -94,28 +81,39 @@ const SecurityPage = () => {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-3 h-auto p-1">
           <TabsTrigger
             value="protect"
             className="flex items-center gap-2 py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Lock className="h-4 w-4" />
-            <span>Password Protect</span>
+            <span>Protect</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="unlock"
+            className="flex items-center gap-2 py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <Unlock className="h-4 w-4" />
+            <span>Unlock</span>
           </TabsTrigger>
           <TabsTrigger
             value="redact"
             className="flex items-center gap-2 py-2.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <EyeOff className="h-4 w-4" />
-            <span>Redaction</span>
+            <span>Redact</span>
           </TabsTrigger>
         </TabsList>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 mt-4 sm:mt-6">
           {/* Left Panel */}
           <div className="space-y-6">
             <UploadCard
-              title={activeTab === "protect" ? "Upload PDF to Protect" : "Upload PDF to Redact"}
+              title={
+                activeTab === "protect" ? "Upload PDF to Protect" :
+                  activeTab === "unlock" ? "Upload PDF to Unlock" :
+                    "Upload PDF to Redact"
+              }
               description="Select a PDF file"
               accept=".pdf"
               icon="file"
@@ -130,6 +128,11 @@ const SecurityPage = () => {
                       <Lock className="h-4 w-4 text-primary" />
                       Password Settings
                     </>
+                  ) : activeTab === "unlock" ? (
+                    <>
+                      <Unlock className="h-4 w-4 text-primary" />
+                      Unlock Settings
+                    </>
                   ) : (
                     <>
                       <EyeOff className="h-4 w-4 text-primary" />
@@ -138,32 +141,36 @@ const SecurityPage = () => {
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {activeTab === "protect" && (
+              <CardContent className="space-y-4 p-4 sm:p-6">
+                {(activeTab === "protect" || activeTab === "unlock") && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="password">Password</Label>
+                      <Label htmlFor="password">
+                        {activeTab === "protect" ? "Set Password" : "Opening Password (if any)"}
+                      </Label>
                       <Input
                         id="password"
                         type="password"
-                        placeholder="Enter password"
+                        placeholder={activeTab === "protect" ? "Enter password" : "Enter file password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirm-password">Confirm Password</Label>
-                      <Input
-                        id="confirm-password"
-                        type="password"
-                        placeholder="Confirm password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                      />
-                      {password && confirmPassword && password !== confirmPassword && (
-                        <p className="text-xs text-destructive">Passwords do not match</p>
-                      )}
-                    </div>
+                    {activeTab === "protect" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="confirm-password">Confirm Password</Label>
+                        <Input
+                          id="confirm-password"
+                          type="password"
+                          placeholder="Confirm password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                        />
+                        {password && confirmPassword && password !== confirmPassword && (
+                          <p className="text-xs text-destructive">Passwords do not match</p>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -202,7 +209,7 @@ const SecurityPage = () => {
                   onClick={handleProcess}
                 >
                   <Shield className="h-4 w-4 mr-2" />
-                  {activeTab === "protect" ? "Protect PDF" : "Redact PDF"}
+                  {activeTab === "protect" ? "Protect PDF" : activeTab === "unlock" ? "Unlock PDF" : "Redact PDF"}
                 </PrimaryButton>
               </CardContent>
             </Card>
@@ -210,10 +217,15 @@ const SecurityPage = () => {
 
           {/* Right Panel */}
           <ResultCard
-            title={activeTab === "protect" ? "Protected PDF" : "Redaction Preview"}
+            title={
+              activeTab === "protect" ? "Protected PDF" :
+                activeTab === "unlock" ? "Unlocked PDF" :
+                  "Redacted PDF"
+            }
             status={status}
             showDownload={status === "success"}
-            className="min-h-[500px]"
+            className="min-h-[350px] sm:min-h-[500px]"
+            onDownload={() => handleDownload(`${activeTab === 'protect' ? 'protected' : activeTab === 'unlock' ? 'unlocked' : 'redacted'}.pdf`)}
           >
             {status === "idle" && (
               <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -252,6 +264,24 @@ const SecurityPage = () => {
                 <PrimaryButton variant="outline" className="w-full gap-2" onClick={() => handleDownload("protected.pdf")}>
                   <Download className="h-4 w-4" />
                   Download Protected PDF
+                </PrimaryButton>
+              </div>
+            )}
+
+            {status === "success" && activeTab === "unlock" && (
+              <div className="space-y-4">
+                <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-center border border-emerald-200 dark:border-emerald-800">
+                  <Unlock className="h-12 w-12 mx-auto mb-3 text-emerald-600 dark:text-emerald-400" />
+                  <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                    PDF Successfully Unlocked
+                  </p>
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1">
+                    Your file is now free of restrictions
+                  </p>
+                </div>
+                <PrimaryButton variant="outline" className="w-full gap-2" onClick={() => handleDownload("unlocked.pdf")}>
+                  <Download className="h-4 w-4" />
+                  Download Unlocked PDF
                 </PrimaryButton>
               </div>
             )}
@@ -299,8 +329,8 @@ const SecurityPage = () => {
             )}
           </ResultCard>
         </div>
-      </Tabs>
-    </PageLayout>
+      </Tabs >
+    </PageLayout >
   );
 };
 

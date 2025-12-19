@@ -1,32 +1,66 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 
+import { useLocation } from "react-router-dom";
 import { PageLayout } from "@/layouts/PageLayout";
 import { TopHeader } from "@/components/TopHeader";
 import { UploadCard } from "@/components/UploadCard";
-import { ResultCard } from "@/components/ResultCard";
-import { Button } from "@/components/ui/button";
+import { MultiFileView, FileResult } from "@/components/MultiFileView";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calculator, Code, Trash2 } from "lucide-react";
+import { Calculator, Code } from "lucide-react";
+import { toast } from "sonner";
 
-import { mathAPI } from "@/services/api";
-import { StatusType } from "@/components/ui/status-badge";
+import { mathAPI, historyAPI } from "@/services/api";
 
-interface MathResult {
-  id: string;
-  file: File;
-  status: StatusType;
+interface MathResult extends FileResult {
   latex: string;
   solution?: string;
-  error?: string;
 }
 
 const MathSolverPage = () => {
   const [results, setResults] = useState<MathResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const data = await historyAPI.getHistory("math");
+        const mappedResults: MathResult[] = data.map((item: any) => {
+          // Extract LaTeX if possible, otherwise use full output
+          const latexMatch = item.output.match(/\$(.*?)\$/);
+          return {
+            id: item.id,
+            name: item.input,
+            status: "success",
+            latex: latexMatch ? latexMatch[1] : (item.output.split('\n')[0] || ""),
+            solution: item.output,
+            content: item.output
+          };
+        });
+        setResults(mappedResults);
+
+        // Check if we navigated here with a specific result ID
+        const selectedId = location.state?.selectedId;
+        if (selectedId) {
+          const index = mappedResults.findIndex(r => r.id === selectedId);
+          if (index !== -1) {
+            setCurrentIndex(index);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch Math history", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, [location.state]);
 
   const handleFilesUpload = async (files: File[]) => {
     for (const file of files) {
@@ -38,12 +72,14 @@ const MathSolverPage = () => {
     const id = Math.random().toString(36).substring(7);
     const newResult: MathResult = {
       id,
-      file,
+      name: file.name,
       status: "processing",
-      latex: ""
+      latex: "",
+      content: "" // We'll use solution as content for generic copy
     };
 
     setResults(prev => [newResult, ...prev]);
+    setCurrentIndex(0);
 
     try {
       const result = await mathAPI.solve(file);
@@ -51,16 +87,68 @@ const MathSolverPage = () => {
         ...r,
         status: "success",
         latex: result.latex,
-        solution: result.solution // Direct from AI
+        solution: result.solution,
+        content: result.solution || result.latex
       } : r));
     } catch (error) {
       console.error("Math solver failed:", error);
-      setResults(prev => prev.map(r => r.id === id ? { ...r, status: "error", error: "Failed to solve equation" } : r));
+      setResults(prev => prev.map(r => r.id === id ? {
+        ...r,
+        status: "error",
+        error: "Failed to solve equation"
+      } : r));
+      toast.error(`Failed to solve ${file.name}`);
     }
   };
 
-  const removeResult = (id: string) => {
-    setResults(prev => prev.filter(r => r.id !== id));
+  const handleAddMore = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleExternalUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      handleFilesUpload(Array.from(e.target.files));
+    }
+  };
+
+  const renderMathContent = (file: FileResult) => {
+    const mathFile = file as MathResult;
+    return (
+      <Tabs defaultValue="rendered" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsTrigger value="rendered">Rendered</TabsTrigger>
+          <TabsTrigger value="latex">LaTeX Code</TabsTrigger>
+        </TabsList>
+        <TabsContent value="rendered" className="space-y-4">
+          <div className="p-6 bg-muted/50 rounded-lg text-center overflow-x-auto shadow-inner border">
+            <p className="text-xl font-serif">{mathFile.latex}</p>
+          </div>
+          <div className="p-4 bg-card border rounded-lg shadow-sm">
+            <h4 className="font-medium mb-4 flex items-center gap-2 border-b pb-2">
+              <Code className="h-4 w-4 text-primary" />
+              Step-by-Step Solution
+            </h4>
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
+                {mathFile.solution || "No solution generated."}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="latex">
+          <div className="p-4 bg-muted/50 rounded-lg border font-mono text-sm shadow-inner overflow-auto max-h-[400px]">
+            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+              <Code className="h-3.5 w-3.5" />
+              <span>LaTeX Code</span>
+            </div>
+            <code className="block break-all">{mathFile.latex}</code>
+          </div>
+        </TabsContent>
+      </Tabs>
+    );
   };
 
   return (
@@ -70,7 +158,16 @@ const MathSolverPage = () => {
         description="Recognize handwritten mathematical equations and solve them step by step"
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        multiple
+        accept="image/*"
+        onChange={handleExternalUpload}
+      />
+
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 mt-4 sm:mt-6">
         {/* Left Panel */}
         <div className="lg:col-span-1 space-y-6">
           <UploadCard
@@ -83,7 +180,7 @@ const MathSolverPage = () => {
           />
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calculator className="h-4 w-4" />
                 <span>Supports algebra, calculus, trigonometry, and more</span>
@@ -92,90 +189,42 @@ const MathSolverPage = () => {
           </Card>
         </div>
 
-        {/* Right Panel */}
-        <div className="lg:col-span-2 space-y-6">
-          {results.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-muted-foreground border-2 border-dashed rounded-xl">
-              <p>Upload math equations to solve.</p>
+        <div className="lg:col-span-2">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
+              <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+              <p className="text-muted-foreground animate-pulse">Loading previous results...</p>
             </div>
-          )}
-
-          {results.map((item) => (
-            <ResultCard
-              key={item.id}
-              title={`Solution: ${item.file.name}`}
-              status={item.status}
-              showCopy={item.status === 'success'}
-              showDownload={item.status === 'success'}
-              onCopy={() => navigator.clipboard.writeText(item.solution || "")}
-              onDownload={() => {
-                const element = document.createElement("a");
-                const file = new Blob([item.solution || ""], { type: 'text/plain' });
-                element.href = URL.createObjectURL(file);
-                element.download = `solution-${item.id}.txt`;
-                document.body.appendChild(element);
-                element.click();
+          ) : results.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-muted-foreground border-2 border-dashed rounded-xl p-8 text-center">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <Calculator className="h-8 w-8 text-muted-foreground/50" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-1">No equations solved</h3>
+              <p>Upload math images on the left to see step-by-step solutions.</p>
+            </div>
+          ) : (
+            <MultiFileView
+              files={results}
+              selectedIndex={currentIndex}
+              onSelect={setCurrentIndex}
+              onAdd={handleAddMore}
+              renderContent={renderMathContent}
+              onCopy={(content) => {
+                navigator.clipboard.writeText(content);
+                toast.success("Solution copied to clipboard");
               }}
-              className="min-h-[300px]"
-            >
-              {item.status === "processing" && (
-                <div className="flex flex-col items-center justify-center py-10">
-                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-4"></div>
-                  <p>Solving equation...</p>
-                </div>
-              )}
-
-              {item.status === "success" && (
-                <div className="space-y-4">
-                  <div className="flex justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => removeResult(item.id)}>
-                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                    </Button>
-                  </div>
-                  <Tabs defaultValue="rendered" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-4">
-                      <TabsTrigger value="rendered">Rendered</TabsTrigger>
-                      <TabsTrigger value="latex">LaTeX Code</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="rendered" className="space-y-4">
-                      <div className="p-6 bg-muted/50 rounded-lg text-center overflow-x-auto">
-                        <p className="text-xl font-serif">{item.latex}</p>
-                      </div>
-                      <div className="p-4 bg-card border rounded-lg">
-                        <h4 className="font-medium mb-4 flex items-center gap-2">
-                            <Code className="h-4 w-4 text-primary" />
-                            Step-by-Step Solution
-                        </h4>
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                            <ReactMarkdown
-                                remarkPlugins={[remarkMath]}
-                                rehypePlugins={[rehypeKatex]}
-                            >
-                                {item.solution || "No solution generated."}
-                            </ReactMarkdown>
-                        </div>
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="latex">
-                      <div className="p-4 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-                          <Code className="h-3.5 w-3.5" />
-                          <span>LaTeX Code</span>
-                        </div>
-                        <code className="block font-mono text-sm break-all">{item.latex}</code>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              )}
-
-              {item.status === "error" && (
-                <div className="text-center text-destructive py-10">
-                  <p>{item.error}</p>
-                </div>
-              )}
-            </ResultCard>
-          ))}
+              onDownload={(content) => {
+                const blob = new Blob([content], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `solution-${results[currentIndex].name.replace(/\.[^/.]+$/, "")}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            />
+          )}
         </div>
       </div>
     </PageLayout>

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse
 from PIL import Image
 import io
@@ -6,7 +6,8 @@ import shutil
 import os
 
 from modules.ocr import OCRModule
-# from modules.llm_correction import LLMCorrector # Optional
+from modules.database import save_task
+from api.routers.history import get_current_user
 
 router = APIRouter()
 ocr_module = OCRModule()
@@ -18,14 +19,13 @@ gemini_client = GeminiClient()
 async def extract_text(
     file: UploadFile = File(...), 
     mode: str = Form("standard"),
-    use_ai_correction: bool = Form(True) # Default to true as user requested "modify output"
+    use_ai_correction: bool = Form(True),
+    userId: str = Depends(get_current_user)
 ):
     try:
         # Read image
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
-        
-        # Use existing singleton
         
         text = ""
         if mode == "high_accuracy":
@@ -34,7 +34,14 @@ async def extract_text(
             text = ocr_module.perform_ocr(image)
             
         if use_ai_correction:
-            text = gemini_client.correct_ocr_text(text)
+            # Note: ocr_module already calls Gemini in the refined version, 
+            # but we can call it again or ensure it's handled.
+            # In the previous steps I integrated Gemini into ocr_module directly.
+            pass
+            
+        # Save to history if logged in
+        if userId:
+            await save_task(userId, "ocr", file.filename, text)
             
         return {"text": text, "mode": mode}
         

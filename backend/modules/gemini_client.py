@@ -10,7 +10,7 @@ import os
 # API Key provided by user
 # API Key provided by user
 API_KEY = os.getenv("GEMINI_API_KEY") 
-BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
+BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 class GeminiClient:
     def __init__(self):
@@ -91,12 +91,30 @@ class GeminiClient:
         if not text: return "[]"
         prompt = f"""
         Analyze the following text and identify ALL sensitive personal information that should be redacted.
-        Include: Names of people, Email addresses, Phone numbers, Credit Card numbers, Social Security Numbers (SSN), and Physics/Mailing Addresses.
+        Include: Names of people, Email addresses, Phone numbers, Credit Card numbers, Social Security Numbers (SSN), and Physical/Mailing Addresses.
         Return ONLY a raw JSON array of strings containing the exact text segments to redact. Do not include the type, just the text.
         Example output: ["John Doe", "john@example.com", "555-1234"]
         
         Text to analyze:
         {text[:10000]} 
         """ 
-        # Truncate text to avoid token limits if necessary, though Gemini has large context.
         return self._generate(prompt)
+
+    def enhance_svg(self, svg_code: str) -> str:
+        """
+        Optimizes and cleans up SVG code using Gemini.
+        """
+        if not svg_code: return svg_code
+        prompt = f"Please optimize and clean up the following SVG code. Remove unnecessary elements, group shapes where logical, and ensure it is valid SVG. Return ONLY the improved SVG code.\n\nSVG:\n{svg_code}"
+        result = self._generate(prompt)
+        return result if result else svg_code
+
+    def detect_language(self, text: str) -> str:
+        """
+        Detects the language of the provided text.
+        Returns the ISO language code (e.g., 'en', 'hi', 'mr').
+        """
+        if not text: return "en"
+        prompt = f"Detect the language of the following text and return ONLY its 2-letter ISO code (e.g., en, hi, mr, es, fr, etc.).\n\nText:\n{text}"
+        result = self._generate(prompt).strip().lower()
+        return result[:2] if result else "en"

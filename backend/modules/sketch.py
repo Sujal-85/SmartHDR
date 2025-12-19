@@ -8,6 +8,7 @@ from PIL import Image
 import logging
 from typing import Union
 import os
+from modules.gemini_client import GeminiClient
 
 class SketchModule:
     """Handles conversion of sketches to SVG"""
@@ -113,6 +114,13 @@ class SketchModule:
                 
         svg_content.append('</svg>')
         full_svg = "\n".join(svg_content)
+        
+        # AI Enhancement
+        gemini = GeminiClient()
+        if gemini.is_ready:
+            print("SketchModule: Enhancing SVG with AI...")
+            # We pass a truncated version if it's too large, but SVG is usually okay
+            full_svg = gemini.enhance_svg(full_svg)
         
         if output_path:
             with open(output_path, "w") as f:
