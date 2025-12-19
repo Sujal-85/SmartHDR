@@ -63,15 +63,20 @@ async def login(response: Response, user: UserLogin):
     import json
     user_data_str = json.dumps(user_data)
 
+    # Production cookie settings
+    is_prod = os.getenv("RENDER") is not None or os.getenv("NODE_ENV") == "production"
+    
     # Set HTTP-only cookie for auth
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
         max_age=3600 * 24 * 7, # 1 week
-        samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        samesite="none" if is_prod else "lax",
+        secure=is_prod,
+        margin="0" # Not a standard arg, removing
     )
+
 
     # Set readable cookie for user data
     response.set_cookie(
@@ -79,8 +84,8 @@ async def login(response: Response, user: UserLogin):
         value=user_data_str,
         httponly=False,
         max_age=3600 * 24 * 7,
-        samesite="lax",
-        secure=False
+        samesite="none" if is_prod else "lax",
+        secure=is_prod
     )
     
     return {
@@ -123,13 +128,16 @@ async def google_login(response: Response, user: UserGoogleLogin):
     }
     user_data_str = json.dumps(user_data)
 
+    # Production cookie settings
+    is_prod = os.getenv("RENDER") is not None or os.getenv("NODE_ENV") == "production"
+
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
         max_age=3600 * 24 * 7,
-        samesite="lax",
-        secure=False
+        samesite="none" if is_prod else "lax",
+        secure=is_prod
     )
 
     response.set_cookie(
@@ -137,8 +145,8 @@ async def google_login(response: Response, user: UserGoogleLogin):
         value=user_data_str,
         httponly=False,
         max_age=3600 * 24 * 7,
-        samesite="lax",
-        secure=False
+        samesite="none" if is_prod else "lax",
+        secure=is_prod
     )
     
     return {
