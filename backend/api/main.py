@@ -53,31 +53,7 @@ app.include_router(pdf_tools.router, prefix="/api/pdf", tags=["PDF"])
 
 @app.on_event("startup")
 async def startup_event():
-    print("Starting up... Preloading AI Models (This may take a moment)")
-    
-    # 1. Preload Speech Models
-    try:
-        print("  - Preloading Speech Toolkit...")
-        from modules import speech_language
-        toolkit = speech_language.LanguageToolkit()
-        toolkit.preload_models()
-    except Exception as e:
-        print(f"  ! Error loading Speech models: {e}")
+    # We disable preloading on startup to save memory on limited environments (like Render Free Tier)
+    # Models will be lazily loaded when first requested.
+    print("Startup complete. Models will be loaded lazily on first request.")
 
-    # 2. Preload OCR Models
-    try:
-        print("  - Preloading OCR Engine...")
-        from modules.ocr import get_ocr_reader
-        get_ocr_reader()
-    except Exception as e:
-        print(f"  ! Error loading OCR models: {e}")
-
-    # 3. Preload Math OCR
-    try:
-        print("  - Preloading Math Engine...")
-        from api.routers.math_solver import math_module
-        # The instantiation already happened on import, but this ensures it's referenced
-    except Exception as e:
-        print(f"  ! Error loading Math models: {e}")
-
-    print("AI Models Ready.")
