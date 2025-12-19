@@ -52,32 +52,18 @@ class LanguageToolkit:
         self.vosk_path = "model-small-en"
         
     def preload_models(self):
-        """Preload heavy models to avoid runtime delay"""
-        logging.info("Preloading Speech & Language models...")
+        """Perform lightweight checks but avoid loading models into RAM"""
+        logging.info("Checking Speech & Language model status...")
         
-        # 1. Load Vosk Model
-        if HAS_VOSK:
-            if not os.path.exists(self.vosk_path):
-                self._download_vosk_model()
+        # 1. Check Vosk Model (only download, don't load)
+        if HAS_VOSK and not os.path.exists(self.vosk_path):
+            self._download_vosk_model()
             
-            if os.path.exists(self.vosk_path):
-                try:
-                    logging.info(f"Loading Vosk model from {self.vosk_path}...")
-                    self.vosk_model = Model(self.vosk_path)
-                    logging.info("Vosk model loaded successfully.")
-                except Exception as e:
-                    logging.error(f"Failed to load Vosk model: {e}")
-        
         # 2. Check Translation Models
         if HAS_OFFLINE_TRANSLATION:
-            logging.info("Checking Offline Translation models...")
-            try:
-                # This ensures we have the index to check packages
-                argostranslate.package.update_package_index()
-                # We can also proceed to install default pairs here if desired
-                self.install_translation_packages() 
-            except Exception as e:
-                logging.warning(f"Offline translation setup warning: {e}")
+            logging.info("Checking Offline Translation package status...")
+            # We skip package update/install here to save memory/bandwidth on boot
+            # It will be handled on first translation attempt if needed
 
     def _download_vosk_model(self):
         try:
@@ -116,9 +102,6 @@ class LanguageToolkit:
         """Fetch available neural voices from Edge TTS"""
         try:
             voices = await edge_tts.list_voices()
-            # Filter for English, Hindi, Marathi or generally strictly high quality
-            # For simplicity, we return all or a curated list.
-            # Let's return a mapped list compatible with frontend
             formatted_voices = []
             for v in voices:
                 formatted_voices.append({
@@ -137,7 +120,6 @@ class LanguageToolkit:
         """
         try:
             if output_file.endswith(".wav"):
-                # Edge TTS outputs mp3 by default mostly, but we can save as mp3
                 output_file = output_file.replace(".wav", ".mp3")
             
             communicate = edge_tts.Communicate(text, voice_id)
@@ -150,7 +132,6 @@ class LanguageToolkit:
     def get_voices(self) -> list:
         """
         DEPRECATED: Returns system voices (pyttsx3).
-        Use get_neural_voices for better quality.
         """
         global _tts_engine, _tts_lock
         voices_list = []
@@ -180,7 +161,7 @@ class LanguageToolkit:
                 if _tts_engine is None:
                     _tts_engine = pyttsx3.init()
                 
-                if voice_id and "Neural" not in voice_id: # Only apply if not a neural ID
+                if voice_id and "Neural" not in voice_id:
                     _tts_engine.setProperty('voice', voice_id)
 
                 if output_file.endswith(".mp3"):
@@ -200,10 +181,6 @@ class LanguageToolkit:
             
         try:
             available_packages = argostranslate.package.get_available_packages()
-            to_install = []
-            
-            # We want EN->HI, HI->EN, EN->MR, MR->EN
-            # Note: For efficient checking, define a set of installed codes
             installed_packages = argostranslate.package.get_installed_packages()
             installed_pairs = set((p.from_code, p.to_code) for p in installed_packages)
 
@@ -230,7 +207,9 @@ class LanguageToolkit:
         # 1. Try Offline
         if HAS_OFFLINE_TRANSLATION:
             try:
-                # Check directly installed languages
+                # Ensure models are checked/installed lazily
+                self.install_translation_packages()
+                
                 installed = argostranslate.package.get_installed_packages()
                 has_pair = any(p.from_code == from_code and p.to_code == to_code for p in installed)
                 
@@ -259,16 +238,16 @@ class LanguageToolkit:
             except Exception as e:
                  return f"Online Translation Error: {e}"
                  
-        return "Error: No translation modules available. Please check internet or install argostranslate/deep-translator."
+        return "Error: No translation modules available."
 
     def transcribe_audio(self, audio_bytes: bytes) -> str:
         """Transcribe audio using Vosk (Offline)"""
         if not HAS_VOSK:
             return "Speech recognition module not available."
             
-        # Ensure model is ready
+        # Ensure model is ready (Lazy Load)
         if self.vosk_model is None:
-            logging.info("Vosk model not preloaded. Attempting to load now...")
+            logging.info("Loading Vosk model for transcription...")
             if not os.path.exists(self.vosk_path):
                 self._download_vosk_model()
             
@@ -278,7 +257,7 @@ class LanguageToolkit:
                 except Exception as e:
                     return f"Failed to load speech model: {e}"
             else:
-                return "Speech model missing and download failed."
+                return "Speech model missing."
 
         if not audio_bytes:
             return "No audio data received."
@@ -312,9 +291,9 @@ class LanguageToolkit:
                 
             except Exception as e:
                 logging.error(f"Audio processing error: {e}")
-                return f"Audio conversion error. Please verify input format."
+                return f"Audio conversion error."
 
-            # Use cached model
+            # Use loaded model
             rec = KaldiRecognizer(self.vosk_model, 16000)
             rec.AcceptWaveform(processed_audio_bytes)
             res = json.loads(rec.FinalResult())

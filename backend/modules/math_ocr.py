@@ -27,17 +27,22 @@ class MathOCRModule:
     """Handles Math OCR operations"""
     
     def __init__(self):
-        self.model = None
+        self._model = None
         self.init_error = None
         
-        if HAS_PIX2TEX:
+    @property
+    def model(self):
+        """Lazy loading of LatexOCR model"""
+        if self._model is None and HAS_PIX2TEX and self.init_error is None:
             try:
-                # Suppress arguments to avoid Streamlit conflicts if any
-                self.model = LatexOCR()
+                logging.info("Loading LatexOCR model for the first time...")
+                self._model = LatexOCR()
+                logging.info("LatexOCR model loaded successfully.")
             except Exception as e:
                 logging.error(f"Failed to initialize LatexOCR: {str(e)}")
                 self.init_error = str(e)
-                self.model = None
+                self._model = None
+        return self._model
     
     def perform_math_ocr(self, image: Union[Image.Image, np.ndarray]) -> str:
         """
