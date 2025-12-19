@@ -1,51 +1,76 @@
-import { useState } from "react";
-import { ocrAPI } from "@/services/api";
+import { useState, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { ocrAPI, historyAPI } from "@/services/api";
 import { PageLayout } from "@/layouts/PageLayout";
 import { TopHeader } from "@/components/TopHeader";
 import { UploadCard } from "@/components/UploadCard";
-import { ResultCard } from "@/components/ResultCard";
-import { PrimaryButton } from "@/components/ui/primary-button";
-import { StatusType } from "@/components/ui/status-badge";
+import { MultiFileView, FileResult } from "@/components/MultiFileView";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Separator } from "@/components/ui/separator";
-import { ScanLine, Type, PenTool, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ScanLine, Type, PenTool } from "lucide-react";
+import { toast } from "sonner";
 
-interface OCRResult {
-  id: string;
-  file: File;
-  status: StatusType;
-  text: string;
+interface OCRResult extends FileResult {
   confidence?: number;
   wordCount?: number;
-  error?: string;
 }
 
 const ScanOCRPage = () => {
   const [results, setResults] = useState<OCRResult[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [ocrMode, setOcrMode] = useState<"printed" | "handwritten">("printed");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const data = await historyAPI.getHistory("ocr");
+        const mappedResults: OCRResult[] = data.map((item: any) => ({
+          id: item.id,
+          name: item.input,
+          status: "success",
+          content: item.output,
+          wordCount: item.output.split(/\s+/).length
+        }));
+        setResults(mappedResults);
+
+        // Check if we navigated here with a specific result ID
+        const selectedId = location.state?.selectedId;
+        if (selectedId) {
+          const index = mappedResults.findIndex(r => r.id === selectedId);
+          if (index !== -1) {
+            setCurrentIndex(index);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch OCR history", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, [location.state]);
 
   const handleFilesUpload = async (files: File[]) => {
-    setIsProcessing(true);
     for (const file of files) {
       await processFile(file);
     }
-    setIsProcessing(false);
   };
 
   const processFile = async (file: File) => {
     const id = Math.random().toString(36).substring(7);
     const newResult: OCRResult = {
       id,
-      file,
+      name: file.name,
       status: "processing",
-      text: ""
+      content: ""
     };
 
     setResults(prev => [newResult, ...prev]);
+    setCurrentIndex(0); // Select the newest file
 
     try {
       const mode = ocrMode === "handwritten" ? "high_accuracy" : "standard";
@@ -54,24 +79,28 @@ const ScanOCRPage = () => {
       setResults(prev => prev.map(r => r.id === id ? {
         ...r,
         status: "success",
-        text: result.text,
-        confidence: 0.98, // Mock confidence for now
+        content: result.text,
         wordCount: result.text.split(/\s+/).length
       } : r));
     } catch (error) {
       console.error("OCR Error:", error);
-      setResults(prev => prev.map(r => r.id === id ? { ...r, status: "error", error: "Failed to extract text" } : r));
+      setResults(prev => prev.map(r => r.id === id ? {
+        ...r,
+        status: "error",
+        error: "Failed to extract text"
+      } : r));
+      toast.error(`Failed to process ${file.name}`);
     }
   };
 
-  const removeResult = (id: string) => {
-    setResults(prev => {
-      const newResults = prev.filter(r => r.id !== id);
-      if (currentIndex >= newResults.length) {
-        setCurrentIndex(Math.max(0, newResults.length - 1));
-      }
-      return newResults;
-    });
+  const handleAddMore = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleExternalUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      handleFilesUpload(Array.from(e.target.files));
+    }
   };
 
   return (
@@ -81,7 +110,16 @@ const ScanOCRPage = () => {
         description="Extract text from scanned documents and handwritten notes using AI-powered recognition"
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        multiple
+        accept="image/*,.pdf"
+        onChange={handleExternalUpload}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-3 mt-4 sm:mt-6">
         {/* Left Panel - Inputs */}
         <div className="lg:col-span-1 space-y-6">
           <UploadCard
@@ -101,15 +139,15 @@ const ScanOCRPage = () => {
                 Recognition Mode
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 p-4 sm:p-6 sm:pt-0">
               <RadioGroup
                 value={ocrMode}
                 onValueChange={(value) => setOcrMode(value as "printed" | "handwritten")}
-                className="grid grid-cols-2 gap-4"
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4"
               >
                 <Label
                   htmlFor="printed"
-                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${ocrMode === "printed"
+                  className={`flex items-center gap-3 p-3 sm:p-4 rounded-lg border-2 cursor-pointer transition-all ${ocrMode === "printed"
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"
                     }`}
@@ -126,7 +164,7 @@ const ScanOCRPage = () => {
 
                 <Label
                   htmlFor="handwritten"
-                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${ocrMode === "handwritten"
+                  className={`flex items-center gap-3 p-3 sm:p-4 rounded-lg border-2 cursor-pointer transition-all ${ocrMode === "handwritten"
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"
                     }`}
@@ -145,59 +183,41 @@ const ScanOCRPage = () => {
           </Card>
         </div>
 
-        {/* Right Panel - Results */}
-        <div className="lg:col-span-2 space-y-6">
-          {results.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-muted-foreground border-2 border-dashed rounded-xl">
-              <p>Upload documents to extract text.</p>
+        <div className="lg:col-span-2">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
+              <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+              <p className="text-muted-foreground animate-pulse">Loading previous results...</p>
             </div>
+          ) : results.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-muted-foreground border-2 border-dashed rounded-xl p-8 text-center">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <ScanLine className="h-8 w-8 text-muted-foreground/50" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-1">No documents processed</h3>
+              <p>Upload files on the left to start extracting text with AI.</p>
+            </div>
+          ) : (
+            <MultiFileView
+              files={results}
+              selectedIndex={currentIndex}
+              onSelect={setCurrentIndex}
+              onAdd={handleAddMore}
+              onCopy={(content) => {
+                navigator.clipboard.writeText(content);
+                toast.success("Text copied to clipboard");
+              }}
+              onDownload={(content) => {
+                const blob = new Blob([content], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = results[currentIndex].name.replace(/\.[^/.]+$/, "") + ".txt";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            />
           )}
-
-          {results.map((item) => (
-            <ResultCard
-              key={item.id}
-              title={`Extracted Text: ${item.file.name}`}
-              status={item.status}
-              showCopy
-              showDownload
-              onCopy={() => navigator.clipboard.writeText(item.text)}
-              className="min-h-[300px]"
-            >
-              {item.status === "processing" && (
-                <div className="flex flex-col items-center justify-center py-10">
-                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-4"></div>
-                  <p>Analyzing document...</p>
-                </div>
-              )}
-
-              {item.status === "success" && (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-wrap gap-2">
-                      <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
-                        {ocrMode === "printed" ? "Printed" : "Handwritten"}
-                      </span>
-                      <span className="px-2 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs rounded-full">
-                        {item.wordCount} Words
-                      </span>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => removeResult(item.id)}>
-                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                    </Button>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg font-mono text-sm whitespace-pre-wrap">
-                    {item.text}
-                  </div>
-                </div>
-              )}
-
-              {item.status === "error" && (
-                <div className="text-center text-destructive py-10">
-                  <p>{item.error}</p>
-                </div>
-              )}
-            </ResultCard>
-          ))}
         </div>
       </div>
     </PageLayout>

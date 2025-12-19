@@ -12,6 +12,8 @@ import logging
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 import torch
 from transformers import logging as transformers_logging
+from modules.gemini_client import GeminiClient
+
 transformers_logging.set_verbosity_error()
 
 # Lazy loading of models
@@ -188,6 +190,11 @@ class OCRModule:
             # Reconstruct layout
             recognized_text = self.reconstruct_layout(results)
             
+            # AI Enhancement
+            gemini = GeminiClient()
+            if gemini.is_ready:
+                return gemini.correct_ocr_text(recognized_text)
+            
             return recognized_text
         except Exception as e:
             logging.error(f"OCR failed: {str(e)}")
@@ -254,7 +261,14 @@ class OCRModule:
                     final_results.append(box)
                 
             # Reconstruct layout with new high-acc text
-            return self.reconstruct_layout(final_results)
+            text = self.reconstruct_layout(final_results)
+            
+            # AI Enhancement
+            gemini = GeminiClient()
+            if gemini.is_ready:
+                return gemini.correct_ocr_text(text)
+                
+            return text
             
         except Exception as e:
             logging.error(f"High accuracy OCR failed processing: {str(e)}")

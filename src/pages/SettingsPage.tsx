@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import { Settings as SettingsIcon, Moon, Sun, Globe, Bell, Palette } from "lucide-react";
 
 const languages = [
@@ -20,21 +22,44 @@ const languages = [
 ];
 
 const SettingsPage = () => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [language, setLanguage] = useState("en");
-  const [notifications, setNotifications] = useState(true);
-  const [autoSave, setAutoSave] = useState(true);
-  const [highContrast, setHighContrast] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return document.documentElement.classList.contains("dark") ||
+      localStorage.getItem("theme") === "dark";
+  });
+  const [language, setLanguage] = useState(() => localStorage.getItem("language") || "en");
+  const [notifications, setNotifications] = useState(() => {
+    const stored = localStorage.getItem("notifications");
+    return stored === null ? true : stored === "true";
+  });
+  const [autoSave, setAutoSave] = useState(() => {
+    const stored = localStorage.getItem("autoSave");
+    return stored === null ? true : stored === "true";
+  });
+  const [highContrast, setHighContrast] = useState(() => localStorage.getItem("highContrast") === "true");
 
   useEffect(() => {
-    const isDark = document.documentElement.classList.contains("dark");
-    setIsDarkMode(isDark);
-  }, []);
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    localStorage.setItem("theme", isDarkMode ? "dark" : "light");
+  }, [isDarkMode]);
 
-  const toggleDarkMode = () => {
-    const newValue = !isDarkMode;
-    setIsDarkMode(newValue);
-    document.documentElement.classList.toggle("dark", newValue);
+  useEffect(() => {
+    localStorage.setItem("language", language);
+  }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem("notifications", String(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem("autoSave", String(autoSave));
+  }, [autoSave]);
+
+  useEffect(() => {
+    localStorage.setItem("highContrast", String(highContrast));
+  }, [highContrast]);
+
+  const handleSave = () => {
+    toast.success("Settings saved successfully!");
   };
 
   return (
@@ -42,148 +67,179 @@ const SettingsPage = () => {
       <TopHeader
         title="Settings"
         description="Configure your preferences and application settings"
-      />
+      >
+        <Button onClick={handleSave} gradient className="hidden sm:flex">
+          Save Changes
+        </Button>
+      </TopHeader>
 
-      <div className="max-w-2xl space-y-6">
-        {/* Appearance */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Palette className="h-4 w-4 text-primary" />
-              Appearance
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Theme Toggle */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {isDarkMode ? (
-                  <Moon className="h-5 w-5 text-muted-foreground" />
-                ) : (
-                  <Sun className="h-5 w-5 text-muted-foreground" />
-                )}
-                <div>
-                  <Label className="text-base">Dark Mode</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Toggle between light and dark theme
-                  </p>
+      <div className="w-full space-y-6 pb-20">
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Appearance */}
+          <Card className="h-full">
+            <CardHeader className="pb-4 border-b bg-muted/30">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <Palette className="h-4 w-4 text-primary" />
+                Appearance
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
+              {/* Theme Toggle */}
+              <div className="flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg transition-colors ${isDarkMode ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground group-hover:bg-muted/80"}`}>
+                    {isDarkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                  </div>
+                  <div>
+                    <Label className="text-base font-semibold">Dark Mode</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Toggle between light and dark theme
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={isDarkMode} onCheckedChange={setIsDarkMode} />
+              </div>
+
+              <Separator />
+
+              {/* High Contrast */}
+              <div className="flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted text-muted-foreground group-hover:bg-muted/80">
+                    <Palette className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <Label className="text-base font-semibold">High Contrast</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Increase contrast for better visibility
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={highContrast} onCheckedChange={setHighContrast} />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Language */}
+          <Card className="h-full">
+            <CardHeader className="pb-4 border-b bg-muted/30">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <Globe className="h-4 w-4 text-primary" />
+                Language & Region
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-muted text-muted-foreground">
+                    <Globe className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <Label className="text-base font-semibold">Default Language</Label>
+                    <p className="text-sm text-muted-foreground">Used for OCR and transcription</p>
+                  </div>
+                </div>
+                <Select value={language} onValueChange={setLanguage}>
+                  <SelectTrigger className="w-full h-11">
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languages.map((lang) => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notifications */}
+          <Card className="h-full">
+            <CardHeader className="pb-4 border-b bg-muted/30">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <Bell className="h-4 w-4 text-primary" />
+                Notifications
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
+              <div className="flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted text-muted-foreground group-hover:bg-muted/80">
+                    <Bell className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <Label className="text-base font-semibold">Processing Updates</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Get notified when tasks complete
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={notifications} onCheckedChange={setNotifications} />
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted text-muted-foreground group-hover:bg-muted/80">
+                    <SettingsIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <Label className="text-base font-semibold">Auto-Save Results</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically save processed files
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={autoSave} onCheckedChange={setAutoSave} />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* About */}
+          <Card className="h-full">
+            <CardHeader className="pb-4 border-b bg-muted/30">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <SettingsIcon className="h-4 w-4 text-primary" />
+                About Platform
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
+              <div className="p-4 bg-muted/30 rounded-xl border border-border/50 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Software Version</span>
+                  <Badge variant="outline">v1.0.0-stable</Badge>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Last Updated</span>
+                  <span className="font-medium">Dec 19, 2024</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">System Status</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-emerald-500 font-medium">All Systems Operational</span>
+                  </div>
                 </div>
               </div>
-              <Switch checked={isDarkMode} onCheckedChange={toggleDarkMode} />
-            </div>
 
-            <Separator />
-
-            {/* High Contrast */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-base">High Contrast</Label>
-                <p className="text-sm text-muted-foreground">
-                  Increase contrast for better visibility
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Button variant="outline" size="sm" className="h-10">Docs</Button>
+                <Button variant="outline" size="sm" className="h-10">Support</Button>
               </div>
-              <Switch checked={highContrast} onCheckedChange={setHighContrast} />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Language */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" />
-              Language & Region
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Default Language</Label>
-              <Select value={language} onValueChange={setLanguage}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {languages.map((lang) => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      {lang.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                This will be the default language for OCR and transcription
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Notifications */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Bell className="h-4 w-4 text-primary" />
-              Notifications
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-base">Processing Notifications</Label>
-                <p className="text-sm text-muted-foreground">
-                  Get notified when tasks complete
-                </p>
-              </div>
-              <Switch checked={notifications} onCheckedChange={setNotifications} />
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-base">Auto-Save Results</Label>
-                <p className="text-sm text-muted-foreground">
-                  Automatically save processed files
-                </p>
-              </div>
-              <Switch checked={autoSave} onCheckedChange={setAutoSave} />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* About */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <SettingsIcon className="h-4 w-4 text-primary" />
-              About
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Version</span>
-                <span className="text-sm font-medium">1.0.0</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Build</span>
-                <span className="text-sm font-medium">2024.12.13</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">License</span>
-                <span className="text-sm font-medium">MIT</span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1">
-                Documentation
-              </Button>
-              <Button variant="outline" size="sm" className="flex-1">
-                Support
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Mobile Save Button */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 border-t bg-background/80 backdrop-blur-lg sm:hidden z-20">
+          <Button onClick={handleSave} gradient className="w-full h-12 text-lg font-bold">
+            Save All Changes
+          </Button>
+        </div>
       </div>
     </PageLayout>
   );

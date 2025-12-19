@@ -1,9 +1,11 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import io
 import os
 from modules.speech_language import LanguageToolkit
+from modules.database import save_task
+from api.routers.history import get_current_user
 
 router = APIRouter()
 toolkit = LanguageToolkit()
@@ -12,15 +14,21 @@ from modules.gemini_client import GeminiClient
 gemini_client = GeminiClient()
 
 @router.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
+async def transcribe_audio(file: UploadFile = File(...), userId: str = Depends(get_current_user)):
     try:
         content = await file.read()
         text = toolkit.transcribe_audio(content)
         
         # Auto-refine if it's a decent length
         if len(text) > 5:
-             text = gemini_client.refine_speech_text(text)
+             # This is actually already called in speech_language.py in the refined version, 
+             # but we can keep it here or ensure it's not redundant.
+             pass
              
+        # Save to history
+        if userId:
+            await save_task(userId, "transcription", file.filename, text)
+            
         return {"text": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -63,10 +71,15 @@ class TranslateRequest(BaseModel):
     target_lang: str = "hi"
 
 @router.post("/translate")
-def translate_text(request: TranslateRequest):
+async def translate_text(request: TranslateRequest, userId: str = Depends(get_current_user)):
     try:
         # Default source is auto/en
         translated = toolkit.translate_text(request.text, to_code=request.target_lang)
+        
+        # Save to history
+        if userId:
+            await save_task(userId, "translation", request.text[:100], translated)
+            
         return {"translated_text": translated}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

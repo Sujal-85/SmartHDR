@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 import logging
 from typing import Union, Optional
+from modules.gemini_client import GeminiClient
 
 # Try to import pix2tex if available
 try:
@@ -53,11 +54,21 @@ class MathOCRModule:
             
         if self.model:
             try:
-                return self.model(image)
+                latex = self.model(image)
+                
+                # AI Enhancement: Solve the problem
+                gemini = GeminiClient()
+                if gemini.is_ready:
+                    solution = gemini.solve_math_problem(latex)
+                    return f"{latex}\n\n--- AI Solution ---\n{solution}"
+                
+                return latex
             except Exception as e:
                 logging.error(f"Math OCR failed: {str(e)}")
                 return r"\text{Error during recognition}"
         else:
+            # Check for AI solution even if local OCR fails (maybe user wants to solve text?)
+            # But here we need the LaTeX/Text from image.
             if IMPORT_ERROR:
                 return f"\\text{{Import Error: {IMPORT_ERROR}}}"
             elif self.init_error:

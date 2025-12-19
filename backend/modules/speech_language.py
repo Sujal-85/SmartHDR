@@ -13,6 +13,7 @@ import wave
 import edge_tts
 import asyncio
 import contextlib
+from modules.gemini_client import GeminiClient
 
 # Global locks/instances
 _tts_engine = None
@@ -240,7 +241,18 @@ class LanguageToolkit:
             except Exception as e:
                 logging.warning(f"Offline translation failed: {e}")
         
-        # 2. Try Online
+        # 2. Try Online (Gemini Priority)
+        gemini = GeminiClient()
+        if gemini.is_ready:
+            try:
+                prompt = f"Translate the following text from {from_code} to {to_code}. Return ONLY the translated text.\n\nText:\n{text}"
+                result = gemini._generate(prompt)
+                if result:
+                    return result
+            except Exception as e:
+                logging.warning(f"Gemini translation failed: {e}")
+
+        # 3. Final Fallback (Deep Translator)
         if HAS_ONLINE_TRANSLATION:
             try:
                 return GoogleTranslator(source=from_code, target=to_code).translate(text)
@@ -309,7 +321,13 @@ class LanguageToolkit:
             
             text = res.get('text', '')
             if not text: 
-                    return "Transcription complete but no text recognized."
+                return "Transcription complete but no text recognized."
+            
+            # AI Enhancement: Refine transcription
+            gemini = GeminiClient()
+            if gemini.is_ready:
+                return gemini.refine_speech_text(text)
+                
             return text
 
         except Exception as e:
