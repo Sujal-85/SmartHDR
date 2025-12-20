@@ -5,6 +5,7 @@ from modules.auth import get_password_hash, verify_password, create_access_token
 from datetime import datetime
 import json
 import uuid
+import os
 
 router = APIRouter()
 
