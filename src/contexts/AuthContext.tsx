@@ -45,11 +45,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const checkAuth = async () => {
         try {
-            const response = await axios.get(`${API_BASE}/auth/me`);
+            console.log("DEBUG: Checking authentication...");
+            // Add a timeout to prevent hanging on the loader screen forever
+            const response = await axios.get(`${API_BASE}/auth/me`, { timeout: 10000 });
             setUser(response.data);
             // Refresh the user_data cookie to keep it in sync
             Cookies.set('user_data', JSON.stringify(response.data), { expires: 7 });
+            console.log("DEBUG: Auth check successful.");
         } catch (error) {
+            console.error("DEBUG: Auth check failed:", error);
             setUser(null);
             Cookies.remove('user_data');
         } finally {
