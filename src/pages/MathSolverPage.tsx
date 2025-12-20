@@ -23,6 +23,7 @@ interface MathResult extends FileResult {
 
 const MathSolverPage = () => {
   const [results, setResults] = useState<MathResult[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
